@@ -55,6 +55,10 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [LoginController::class, 'store'])->name('login.store');
 });
 
+// ===== Public Routes =====
+Route::get('/survei/isi/{token}', [\App\Http\Controllers\Survei\PublicSurveiController::class, 'show'])->name('survei.public.show');
+Route::post('/survei/isi/{token}', [\App\Http\Controllers\Survei\PublicSurveiController::class, 'store'])->name('survei.public.store');
+
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');

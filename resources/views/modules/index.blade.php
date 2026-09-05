@@ -53,13 +53,14 @@
                             </td>
                         @endforeach
                         <td class="px-4 py-3 text-right">
-                            @if (Route::has($routeBase . '.edit'))
-                                <a href="{{ route($routeBase . '.edit', $item->getKey()) }}"
-                                   class="text-xs font-medium text-ink-700 hover:text-merah-600">Ubah</a>
-                            @elseif (Route::has($routeBase . '.show'))
+                            @if (Route::has($routeBase . '.show'))
                                 <a href="{{ route($routeBase . '.show', $item->getKey()) }}"
-                                   class="text-xs font-medium text-ink-700 hover:text-merah-600">Lihat</a>
-                            @else
+                                   class="text-xs font-medium text-ink-700 hover:text-merah-600 mr-2">Detail</a>
+                            @endif
+                            @if (Route::has($routeBase . '.destroy'))
+                                <button type="button" class="text-xs font-medium text-red-600 hover:text-red-800" onclick="openDeleteModal('{{ route($routeBase . '.destroy', $item->getKey()) }}')">Hapus</button>
+                            @endif
+                            @if (!Route::has($routeBase . '.destroy') && !Route::has($routeBase . '.show'))
                                 <span class="text-xs text-ink-600/40">—</span>
                             @endif
                         </td>
@@ -67,7 +68,7 @@
                 @empty
                     <tr>
                         <td colspan="{{ count($columns) + 1 }}" class="px-4 py-10 text-center text-sm text-ink-600/60">
-                            Belum ada data. Jalankan seeder atau tambah data baru.
+                            Belum ada data. Silahkan tambah data baru
                         </td>
                     </tr>
                 @endforelse
@@ -78,4 +79,32 @@
     <div class="mt-4">
         {{ $items->links() }}
     </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-ink-900/50 backdrop-blur-sm">
+        <div class="w-full max-w-sm rounded-sm border border-paper-300 bg-paper-50 p-6 shadow-xl">
+            <h3 class="mb-2 font-display text-lg font-semibold text-ink-900">Konfirmasi Hapus</h3>
+            <p class="mb-6 text-sm text-ink-600">Apakah Anda yakin ingin menghapus data ini? Tindakan ini tidak dapat dibatalkan.</p>
+            <div class="flex justify-end gap-3">
+                <button type="button" onclick="closeDeleteModal()" class="rounded-sm bg-paper-200 px-4 py-2 text-sm font-medium text-ink-700 hover:bg-paper-300">Batal</button>
+                <form id="deleteForm" method="POST" class="inline">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="rounded-sm bg-merah-500 px-4 py-2 text-sm font-medium text-white hover:bg-merah-600">Ya, Hapus</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openDeleteModal(actionUrl) {
+            document.getElementById('deleteForm').action = actionUrl;
+            document.getElementById('deleteModal').classList.remove('hidden');
+            document.getElementById('deleteModal').classList.add('flex');
+        }
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').classList.add('hidden');
+            document.getElementById('deleteModal').classList.remove('flex');
+        }
+    </script>
 </x-layouts.app>
