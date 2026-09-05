@@ -1,0 +1,567 @@
+Rancangan Alur Aplikasi ERP Koperasi Desa
+Dokumen ini merestrukturisasi konsep awal, menambal modul yang hilang, dan mengoreksi kesalahan akuntansi. Bagian bertanda [KOREKSI] adalah perubahan dari konsep asli Anda. Bagian bertanda [BARU] adalah modul yang belum ada di konsep tapi wajib ada.
+________________________________________
+0. Peta Modul & Arah Aliran Data
+        M0. MASTER & KONFIGURASI  (fondasi semua modul)
+                    |
+   +----------------+------------------+
+   |                                   |
+M1. SURVEY                    M8. AKUNTANSI (penerima akhir)
+   |                                   ^
+M2. KALKULASI KEBUTUHAN                |
+   |                                   |
+M3. PERENCANAAN / NERACA KOMODITAS     |
+   |                                   |
+   +--> M5. PEMBELIAN ------+          |
+   |                        |          |
+   +--> M6. PENJUALAN ------+--> M4. GUDANG --+
+   |         & DISTRIBUSI   |                 |
+   |                        |                 |
+   +--> M7. PIUTANG/HUTANG & KAS-BANK --------+
+                                              |
+                                    M9. PELAPORAN
+Aturan arah data (tidak boleh dilanggar):
+1.	Semua pergerakan barang wajib lewat M4 Gudang. Tidak ada modul lain yang boleh menulis langsung ke tabel stok.
+2.	Semua transaksi yang berdampak keuangan wajib menghasilkan jurnal lewat M8. Tidak ada modul yang boleh insert manual ke tabel jurnal, kecuali Jurnal Umum manual oleh akuntan.
+3.	M1–M3 adalah perencanaan (belum ada jurnal, belum ada stok). M4–M7 adalah eksekusi (memicu jurnal). M8–M9 adalah pencatatan & pelaporan.
+4.	Angka HPP hanya boleh berasal dari M4 Gudang, tidak boleh dihitung ulang oleh modul lain.
+________________________________________
+M0. MASTER & KONFIGURASI [BARU]
+Modul ini tidak ada di konsep Anda. Tanpa ini, modul lain tidak punya referensi.
+M0.1 Manajemen Pengguna & Peran
+•	Tabel: users, roles, role_permissions, user_gudang (satu user bisa dibatasi ke gudang tertentu)
+•	Peran minimum: Surveyor, Admin Gudang, Kasir, Pembelian, Akuntan, Manajer, Super Admin
+•	Aturan: Peran yang menginput transaksi tidak boleh sama dengan peran yang memposting jurnal (segregation of duties)
+M0.2 Master Wilayah
+•	kecamatan → desa (hierarki)
+•	Setiap desa boleh punya 0..n gudang
+M0.3 Master Produk & Satuan
+•	kategori_produk: Pertanian, Perikanan, Perkebunan, Sembako Umum, Non-Pangan
+•	produk: kode, nama, kategori, satuan_dasar, is_pangan_pokok (penentu status PPN), umur_simpan_hari
+•	satuan + konversi_satuan: produk_id, satuan_id, faktor_ke_satuan_dasar 
+o	Contoh: Beras satuan dasar = kg. 1 karung = 50 kg (faktor 50). 1 kwintal = 100 kg.
+o	Semua stok disimpan dalam satuan dasar. Konversi hanya di layer input/tampilan.
+•	produk_mapping_akun: menghubungkan produk ke akun Persediaan, HPP, dan Pendapatan yang tepat (jangan hardcode satu akun untuk semua produk)
+M0.4 Master Mitra
+•	supplier: termasuk petani/nelayan lokal
+•	pelanggan: warga, desa lain, pihak ketiga
+•	Flag is_anggota pada pelanggan — wajib, karena SHU koperasi dibagi berdasarkan jasa anggota. Tanpa flag ini Anda tidak bisa hitung pembagian SHU.
+M0.5 Master Koefisien Konsumsi [BARU]
+Tabel referensi untuk M2. Tanpa ini kalkulasi tidak punya dasar.
+kelompok_umur	produk_id	konsumsi_per_orang_per_bulan	satuan	sumber
+Balita (0–4)	Beras	4.5	kg	AKG/asumsi lokal
+Anak (5–12)	Beras	7.5	kg	
+Remaja (13–18)	Beras	9.0	kg	
+Dewasa (19–59)	Beras	10.0	kg	
+Lansia (60+)	Beras	7.0	kg	
+Angka di atas adalah placeholder. Isi dengan data AKG Kemenkes atau survei konsumsi lokal, dan simpan kolom sumber + berlaku_mulai agar bisa diaudit dan direvisi tanpa merusak histori kalkulasi lama.
+M0.6 Konfigurasi Periode & Sistem
+•	periode_akuntansi: tahun, bulan, status (Open / Closed / Locked)
+•	konfigurasi: metode_persediaan (tetapkan: Moving Average), status_pkp (Ya/Tidak), tarif_ppn, tahun_buku_mulai
+•	nomor_dokumen: prefix + format + counter per jenis dokumen per periode
+________________________________________
+M1. SURVEY
+Tujuan
+Mengumpulkan dua hal berbeda yang di konsep Anda tercampur: potensi produksi desa dan profil konsumsi desa.
+M1.1 Survey Demografi (input untuk kalkulasi kebutuhan) [KOREKSI]
+Konsep asli hanya mencatat jumlah penduduk total. Itu tidak cukup.
+Data yang dikumpulkan per desa per periode survei:
+•	Jumlah KK
+•	Jumlah penduduk dipecah per kelompok umur: balita, anak, remaja, dewasa, lansia
+•	Jumlah penduduk laki-laki / perempuan (opsional, untuk refinement AKG)
+M1.2 Survey Potensi Produksi
+Per desa per periode:
+•	Komoditas (produk_id)
+•	Kategori: pertanian / perikanan / perkebunan
+•	Luas lahan / jumlah petani-nelayan
+•	Estimasi hasil panen per bulan (dalam satuan dasar)
+•	Bulan panen (untuk produk musiman) — penting, karena hasil panen padi tidak rata 12 bulan
+M1.3 Survey Harga Pasar
+Per desa per bulan: harga beli petani, harga jual pasar. Ini yang nanti dipakai modul M3 untuk membandingkan harga termurah antar desa.
+Alur Operasional
+Surveyor login → pilih desa → isi form (offline-capable)
+   → simpan sebagai DRAFT
+   → submit → status SUBMITTED
+   → Admin verifikasi → status VERIFIED
+   → hanya data VERIFIED yang masuk ke M2
+Output
+Tabel survey_header (desa, periode, surveyor, status) + survey_demografi + survey_produksi + survey_harga.
+________________________________________
+M2. HITUNG KALKULASI
+Tujuan
+Mengubah data survei menjadi angka kebutuhan komoditas per desa per bulan.
+Rumus
+Kebutuhan(produk, desa, bulan) =
+    Σ [ jumlah_penduduk(desa, kelompok_umur)
+        × koefisien_konsumsi(kelompok_umur, produk) ]
+    × faktor_musiman(produk, bulan)
+    × (1 + faktor_susut)
+•	faktor_musiman default 1.0; naikkan untuk Ramadan/Idulfitri/hajatan
+•	faktor_susut mengakomodasi penyusutan penyimpanan (mis. 2%)
+Alur Operasional
+1. Pilih periode kalkulasi (tahun / bulan)
+2. Sistem tarik data survey VERIFIED terbaru per desa
+3. Sistem tarik koefisien konsumsi yang berlaku pada periode itu
+4. Hitung per (produk × desa × bulan)
+5. Simpan sebagai SNAPSHOT ke tabel kalkulasi_kebutuhan
+6. Status: DRAFT → APPROVED (oleh Manajer)
+Wajib snapshot, bukan view. Kalau dihitung on-the-fly, angka rencana bulan lalu berubah setiap kali master koefisien direvisi, dan Anda kehilangan jejak dasar keputusan pembelian.
+Output
+kalkulasi_kebutuhan: id, periode_tahun, periode_bulan, desa_id, produk_id, jumlah_kebutuhan, satuan_dasar, versi, status
+Konsumen data
+•	M3 Perencanaan (sebagai baseline kebutuhan)
+•	M4 Gudang (untuk update limit_stok / titik pesan ulang)
+________________________________________
+M3. PERENCANAAN KEBUTUHAN & NERACA KOMODITAS
+Ini modul "Kebutuhan" Anda, saya beri nama ulang karena fungsinya perencanaan. Di konsep Anda modul ini juga disebut "Lempar Kebutuhan" — pakai satu nama saja untuk menghindari kebingungan di tabel dan API.
+M3.1 Neraca Komoditas per Desa [BARU]
+Output paling bernilai dari M1–M2, tapi tidak eksplisit di konsep Anda:
+Surplus/Defisit(produk, desa, bulan)
+    = Produksi(M1.2) − Kebutuhan(M2)
+Hasilnya memberi tiga keputusan otomatis:
+Kondisi	Tindakan
+Defisit	Beli dari desa surplus, atau beli dari supplier luar
+Surplus	Jual/distribusikan ke desa defisit, atau jual keluar
+Seimbang	Tidak ada aksi
+M3.2 Konsolidasi Kebutuhan
+•	Agregat kebutuhan seluruh desa per produk per bulan
+•	Kurangi dengan stok gudang saat ini (stok_tersedia dari M4)
+•	Kurangi dengan barang yang sudah dipesan tapi belum datang (on_order dari M5)
+•	Hasil = Kebutuhan Pengadaan Bersih
+Kebutuhan Pengadaan Bersih
+    = Kebutuhan M2
+    − Stok On Hand
+    − On Order (PO belum diterima)
+    + Safety Stock
+M3.3 Perbandingan Harga Antar Desa
+Menggunakan data M1.3 + histori harga pembelian aktual dari M5. Menampilkan ranking sumber pasokan termurah per produk, dengan mempertimbangkan biaya angkut (tambahkan master biaya_angkut_antar_desa).
+M3.4 Pembuatan Permintaan Pembelian (PR)
+•	Dari M3.2, sistem generate draft Purchase Requisition
+•	Approval berjenjang berdasarkan nilai (mis. > Rp 10 juta perlu approval Manajer)
+•	PR yang di-approve → jadi input M5 Pembelian
+M3.5 Permintaan dari Desa & Retur
+•	Desa mengajukan permintaan barang → jadi input M6 Distribusi
+•	Desa mengembalikan barang → jadi input M6.4 Retur Penjualan
+State PR
+DRAFT → SUBMITTED → APPROVED → CONVERTED_TO_PO
+                  ↘ REJECTED
+________________________________________
+M4. GUDANG
+Modul inti. Satu-satunya modul yang boleh mengubah kuantitas dan nilai stok.
+M4.1 Penetapan Metode Penilaian [KOREKSI — keputusan wajib]
+Tetapkan Moving Average (Rata-rata Bergerak).
+Alasan: komoditas pangan tidak bisa dilacak per-lot dengan disiplin di level koperasi desa, dan FIFO menuntut pencatatan lot yang akan gagal di lapangan. Moving average cukup akurat dan tahan terhadap input yang tidak rapi.
+HPP_baru = (Nilai_Persediaan_Lama + Nilai_Pembelian_Baru)
+           / (Qty_Lama + Qty_Baru)
+Setiap penerimaan barang memperbarui hpp_rata2 di tabel stok. Setiap pengeluaran memakai hpp_rata2 yang berlaku saat itu, dan tidak mengubahnya.
+Konsekuensi yang harus Anda terima: nilai persediaan tidak mencerminkan harga pasar terkini saat harga bergejolak. Untuk komoditas yang harganya sangat fluktuatif (cabai, bawang), jadwalkan stock opname lebih sering.
+M4.2 Struktur Stok
+•	stok: gudang_id, produk_id, qty_on_hand, qty_reserved, qty_available, hpp_rata2, nilai_persediaan, limit_min, limit_max
+•	qty_available = qty_on_hand − qty_reserved
+•	Multi-gudang wajib karena koperasi Anda lintas desa
+M4.3 Kartu Stok (Mutasi)
+Tabel kartu_stok — append-only, tidak boleh di-update atau di-delete:
+kolom	keterangan
+id	PK
+tanggal	tanggal mutasi
+gudang_id	
+produk_id	
+jenis_mutasi	IN / OUT / ADJ_IN / ADJ_OUT / TRF_IN / TRF_OUT
+ref_tipe	PENERIMAAN / PENJUALAN / RETUR_BELI / RETUR_JUAL / OPNAME / TRANSFER / KERUSAKAN
+ref_id	ID dokumen sumber
+qty_masuk	
+qty_keluar	
+harga_satuan	
+saldo_qty	saldo setelah mutasi
+saldo_nilai	
+hpp_rata2_setelah	
+Saldo boleh disimpan di kartu stok (berbeda dengan tabel jurnal) karena kartu stok bersifat kronologis-append-only dan tidak menerima backdate. Larang input mutasi backdate. Kalau ada koreksi, buat mutasi baru bertanggal hari ini.
+M4.4 Alur Penerimaan Barang
+PO dari M5 → Barang datang
+  → Input Penerimaan (GRN): qty diterima, qty ditolak
+  → Sortir: BAIK / RUSAK / TIDAK SESUAI SPEK
+  → qty BAIK masuk stok  → kartu_stok IN → jurnal Persediaan (D)
+  → qty RUSAK/TIDAK SESUAI → masuk antrean Retur Pembelian (M5.4)
+  → update hpp_rata2
+M4.5 Alur Pengeluaran Barang
+Order Penjualan/Distribusi (M6)
+  → Reservasi stok (qty_reserved naik, on_hand belum berubah)
+  → Picking & Surat Jalan
+  → Konfirmasi keluar
+     → kartu_stok OUT senilai hpp_rata2
+     → jurnal HPP (D) / Persediaan (K)
+M4.6 Stock Opname
+Buat sesi opname → freeze produk yang dihitung (blokir transaksi)
+  → Input hasil hitung fisik
+  → Sistem hitung selisih vs sistem
+  → Approval Manajer
+  → Posting → kartu_stok ADJ_IN / ADJ_OUT
+  → jurnal penyesuaian (lihat M8.5.2)
+M4.7 Penanganan Kerusakan / Susut
+Barang rusak di gudang → dokumen Berita Acara Kerusakan → approval → kartu_stok OUT → jurnal Biaya Kerusakan (D) / Persediaan (K).
+M4.8 Transfer Antar Gudang [KOREKSI]
+Konsep Anda menaruh "distribusi atau barter" di bawah Penjualan. Itu salah kalau perpindahannya antar gudang milik koperasi yang sama — tidak ada penjualan, tidak ada pendapatan.
+Gudang A → Surat Transfer → status IN_TRANSIT → Gudang B terima
+Jurnal: Persediaan Gudang B (D) / Persediaan Gudang A (K)
+        senilai HPP, TANPA pendapatan dan TANPA HPP
+Barter dengan pihak lain di luar koperasi memang penjualan + pembelian sekaligus (dua transaksi, saling hapus di kas). Bedakan dua kasus ini di sistem.
+M4.9 Update Limit Stok Otomatis
+Dari M2: kebutuhan rutin bulanan → hitung ulang limit_min (titik pesan ulang):
+limit_min = (kebutuhan_harian_rata2 × lead_time_hari) + safety_stock
+________________________________________
+M5. PEMBELIAN
+M5.1 Alur Utama
+PR approved (M3.4)
+  → Pemilihan supplier (bandingkan harga, M3.3)
+  → Buat PO → approval → kirim ke supplier
+  → status: DRAFT → APPROVED → SENT → PARTIAL / RECEIVED → CLOSED
+  → Penerimaan barang ditangani M4.4
+  → Input Faktur Pembelian (bisa beda tanggal dengan penerimaan)
+  → Pembayaran ditangani M7
+M5.2 Tiga Dokumen Terpisah [KOREKSI]
+Konsep Anda menganggap pembelian satu langkah. Pisahkan:
+1.	PO — komitmen, belum ada jurnal
+2.	Penerimaan (GRN) — stok bertambah, jurnal Persediaan (D) / Hutang Belum Difakturkan (K)
+3.	Faktur Pembelian — jurnal Hutang Belum Difakturkan (D) / Hutang Dagang (K)
+Kalau Anda menyederhanakan menjadi dua langkah (GRN langsung ke Hutang Dagang), itu bisa diterima untuk koperasi kecil — tapi tetapkan sekarang, jangan campur.
+M5.3 Pembelian dari Petani/Nelayan
+Kasus khusus: umumnya tunai langsung, tanpa PO, tanpa faktur formal.
+Petani datang → timbang → buat Nota Pembelian Petani
+  → langsung GRN + pembayaran tunai
+  → jurnal: Persediaan (D) / Kas (K)
+Sediakan jalur cepat ini. Kalau memaksa alur PO penuh, petugas lapangan akan bypass sistem dan data Anda akan bohong.
+M5.4 Retur Pembelian
+Barang rusak / tidak sesuai
+  → Dokumen Retur Pembelian
+  → kartu_stok OUT
+  → Pilih penyelesaian:
+     (a) Diganti uang  → Kas (D) / Persediaan (K)
+     (b) Potong hutang → Hutang Dagang (D) / Persediaan (K)
+     (c) Diganti barang → tidak ada jurnal nilai, hanya swap kartu stok
+Kalau berstatus PKP, retur juga membalik PPN Masukan.
+________________________________________
+M6. PENJUALAN & DISTRIBUSI
+M6.1 Klasifikasi Transaksi Keluar [KOREKSI]
+Konsep Anda mencampur empat hal berbeda ke dalam satu modul. Pisahkan:
+Jenis	Ada Pendapatan?	Jurnal
+Penjualan ke warga	Ya	Pendapatan + HPP
+Penjualan ke desa/koperasi lain (entitas beda)	Ya	Pendapatan + HPP
+Distribusi antar gudang sendiri	Tidak	Transfer persediaan saja (M4.8)
+Barter dengan pihak luar	Ya	Penjualan + Pembelian, saling hapus
+M6.2 Alur Penjualan
+Order Penjualan → cek qty_available (M4)
+  → reservasi stok
+  → Surat Jalan → barang keluar (M4.5)
+  → Faktur Penjualan
+  → Pembayaran: Tunai / Transfer / Kredit
+     Kredit → masuk Piutang (M7)
+M6.3 Penjualan Kasir (POS)
+Untuk penjualan eceran ke warga di gerai desa: satu layar, langsung selesai (order + surat jalan + faktur + pembayaran digabung). Jangan paksa alur multi-dokumen di kasir.
+Wajib rekam: is_anggota pembeli, untuk perhitungan SHU.
+M6.4 Retur Penjualan
+Warga/desa kembalikan barang
+  → Dokumen Retur Penjualan
+  → Barang masuk kembali: kartu_stok IN senilai HPP saat penjualan
+  → Jurnal:
+     Retur Penjualan (D)   ← akun kontra pendapatan, JANGAN debit Pendapatan
+     Kas / Piutang (K)
+     Persediaan (D)
+     HPP (K)
+Konsep Anda sudah benar di poin ini. Pertahankan penggunaan akun kontra Retur Penjualan.
+________________________________________
+M7. PIUTANG, HUTANG & KAS-BANK [BARU]
+Modul ini tidak ada di konsep Anda sama sekali, padahal Anda punya transaksi kredit (JKW, JKD). Tanpa ini, uang masuk dari pelunasan tidak punya jalur pencatatan.
+M7.1 Piutang
+•	Buku pembantu piutang per pelanggan
+•	Aging: 0–30 / 31–60 / 61–90 / >90 hari
+•	Pelunasan Piutang: Kas atau Bank (D) / Piutang Usaha (K)
+•	Pelunasan sebagian, pelunasan gabungan beberapa faktur
+•	Penyisihan piutang tak tertagih (akhir tahun)
+M7.2 Hutang
+•	Buku pembantu hutang per supplier
+•	Jadwal jatuh tempo
+•	Pembayaran Hutang: Hutang Dagang (D) / Kas atau Bank (K)
+M7.3 Kas & Bank
+•	Master rekening kas & bank (kas gerai desa, kas pusat, rekening bank)
+•	Kas masuk / kas keluar non-operasional (biaya listrik, gaji, transport)
+•	Mutasi antar kas (setor tunai ke bank)
+•	Rekonsiliasi bank bulanan
+•	Kas kecil (petty cash) dengan sistem imprest
+M7.4 Simpanan Anggota [BARU — wajib untuk badan hukum koperasi]
+•	Simpanan Pokok (sekali saat masuk, tidak bisa ditarik selama jadi anggota)
+•	Simpanan Wajib (rutin bulanan)
+•	Simpanan Sukarela (bisa ditarik — perlakukan sebagai kewajiban, bukan modal)
+Setor simpanan pokok/wajib : Kas (D) / Simpanan Pokok-Wajib (K, Modal)
+Setor simpanan sukarela    : Kas (D) / Simpanan Sukarela (K, Kewajiban)
+Tarik simpanan sukarela    : Simpanan Sukarela (D) / Kas (K)
+________________________________________
+M8. AKUNTANSI
+M8.1 Chart of Account [KOREKSI]
+Ubah dari 2 level flat menjadi hierarki rekursif.
+master_coa
+  id              BIGINT PK
+  kode_akun       VARCHAR(20) UNIQUE   -- '1.1.01.001'
+  parent_id       BIGINT NULL FK -> master_coa.id
+  level           TINYINT              -- 1..5
+  nama_rekening   VARCHAR(100)
+  kelompok        ENUM('AKTIVA','KEWAJIBAN','MODAL','PENDAPATAN','HPP','BIAYA','LAIN')
+  posisi_normal   CHAR(1)              -- 'D' / 'K'
+  is_transaction  BOOLEAN              -- hanya level terdalam = TRUE
+  is_active       BOOLEAN
+Aturan: jurnal hanya boleh menunjuk akun dengan is_transaction = TRUE. Akun induk hanya untuk agregasi laporan.
+Kerangka Kode Akun Koperasi
+1  AKTIVA
+   1.1  Aktiva Lancar
+        1.1.01 Kas & Setara Kas
+        1.1.02 Bank
+        1.1.03 Piutang Usaha
+        1.1.04 Penyisihan Piutang Tak Tertagih (kontra)
+        1.1.05 Persediaan Barang Dagang
+        1.1.06 PPN Masukan          (hanya jika PKP)
+   1.2  Aktiva Tetap
+        1.2.01 Tanah                (tidak disusutkan)
+        1.2.02 Gedung & Bangunan
+        1.2.03 Akum. Peny. Gedung   (kontra)
+        1.2.04 Kendaraan
+        1.2.05 Akum. Peny. Kendaraan (kontra)
+        1.2.06 Peralatan & Komputer
+        1.2.07 Akum. Peny. Peralatan (kontra)
+2  KEWAJIBAN
+   2.1  Kewajiban Lancar
+        2.1.01 Hutang Dagang
+        2.1.02 Hutang Belum Difakturkan
+        2.1.03 Simpanan Sukarela Anggota
+        2.1.04 PPN Keluaran         (hanya jika PKP)
+        2.1.05 Hutang PPN Kurang Bayar
+        2.1.06 Hutang Biaya (akrual)
+   2.2  Kewajiban Jangka Panjang
+3  MODAL / EKUITAS
+   3.1.01 Simpanan Pokok
+   3.1.02 Simpanan Wajib
+   3.1.03 Modal Penyertaan / Hibah
+   3.1.04 Cadangan Umum
+   3.1.05 SHU Ditahan
+   3.1.06 SHU Tahun Berjalan
+4  PENDAPATAN
+   4.1.01 Penjualan Barang Anggota
+   4.1.02 Penjualan Barang Non-Anggota
+   4.1.03 Retur Penjualan          (kontra)
+   4.1.04 Potongan Penjualan       (kontra)
+   4.9.01 Pendapatan Lain-lain
+5  HARGA POKOK PENJUALAN
+   5.1.01 HPP Barang Dagang
+6  BIAYA OPERASIONAL
+   6.1.01 Biaya Gaji & Honor
+   6.1.02 Biaya Transport & Distribusi
+   6.1.03 Biaya Listrik, Air, Telepon
+   6.1.04 Biaya Penyusutan Gedung
+   6.1.05 Biaya Penyusutan Kendaraan
+   6.1.06 Biaya Penyusutan Peralatan
+   6.1.07 Biaya Kerusakan & Susut Barang
+   6.1.08 Biaya Penyisihan Piutang
+7  BIAYA / PENDAPATAN NON-OPERASIONAL
+Pemisahan pendapatan anggota vs non-anggota di 4.1.01 / 4.1.02 bukan pilihan — itu dasar pembagian SHU.
+M8.2 Template Jurnal Otomatis [KOREKSI BESAR]
+Struktur master_transaksi Anda benar konsepnya (template mapping), tapi isinya salah. Perbaikan:
+transaksi_template
+  id_template   PK
+  kode_transaksi  VARCHAR(10)   -- 'JTW'
+  nama_transaksi  VARCHAR(100)
+
+transaksi_template_detail
+  id            PK
+  id_template   FK
+  urutan        INT
+  coa_id        FK -> master_coa
+  posisi        CHAR(1)         -- 'D'/'K'
+  sumber_variabel VARCHAR(50)   -- key dari payload JSON
+  is_optional   BOOLEAN         -- baris PPN dilewati kalau non-PKP
+Contoh benar untuk JTW (Jual Tunai Warga), non-PKP:
+urutan	akun	posisi	sumber_variabel
+1	1.1.01 Kas	D	total_bayar
+2	4.1.02 Penjualan Non-Anggota	K	total_bayar
+3	5.1.01 HPP	D	nilai_hpp
+4	1.1.05 Persediaan	K	nilai_hpp
+Perhatikan: dua pasang jurnal terpisah — pasangan uang (baris 1–2) dan pasangan barang (baris 3–4). Masing-masing pasangan balance sendiri. Di konsep Anda, baris 3 dan 4 hilang dan baris 2 memakai nilai HPP — itulah sumber ketidakseimbangannya.
+Versi PKP (jika status PKP = Ya dan produk kena PPN):
+urutan	akun	posisi	sumber_variabel
+1	Kas	D	total_bayar
+2	Penjualan	K	nilai_dpp
+3	PPN Keluaran	K	nilai_ppn
+4	HPP	D	nilai_hpp
+5	Persediaan	K	nilai_hpp
+Enam kode transaksi Anda (JTW/JTFW/JKW/JTD/JTFD/JKD) hanya berbeda di akun sisi debit dan akun pendapatan (anggota/non-anggota). Simpan sebagai enam template terpisah agar tidak perlu logika if-else di kode aplikasi.
+M8.3 Struktur Jurnal [KOREKSI]
+Konsep Anda punya satu tabel jurnals flat dengan kolom saldo. Ganti menjadi header–detail, dan hapus kolom saldo.
+jurnal_header
+  id              PK
+  no_jurnal       VARCHAR(30) UNIQUE
+  tanggal         DATE
+  periode_tahun   INT
+  periode_bulan   INT
+  kode_transaksi  VARCHAR(10)
+  ref_tipe        VARCHAR(30)   -- 'PENJUALAN','PEMBELIAN','OPNAME',...
+  ref_id          BIGINT
+  keterangan      TEXT
+  total_debet     DECIMAL(18,2)
+  total_kredit    DECIMAL(18,2)
+  status          ENUM('DRAFT','POSTED','REVERSED')
+  is_koreksi      BOOLEAN
+  reverse_of_id   BIGINT NULL   -- menunjuk jurnal yang dibalik
+  created_by, posted_by, posted_at
+
+jurnal_detail
+  id              PK
+  jurnal_id       FK
+  urutan          INT
+  coa_id          FK
+  debet           DECIMAL(18,2) DEFAULT 0
+  kredit          DECIMAL(18,2) DEFAULT 0
+  keterangan      VARCHAR(255)
+Constraint wajib di level database:
+•	total_debet = total_kredit sebelum status boleh menjadi POSTED
+•	Satu baris detail tidak boleh punya debet DAN kredit sekaligus
+•	Jurnal POSTED tidak boleh di-UPDATE atau di-DELETE (trigger penolak)
+•	Tidak boleh posting ke periode berstatus Closed/Locked
+M8.4 Saldo Awal
+1. Input saldo awal per akun (Kas, Bank, Persediaan, Piutang, Hutang, Aset Tetap)
+   - Persediaan: Σ (qty × harga beli) per produk, harus cocok dengan kartu stok awal
+   - Piutang: rinci per pelanggan
+   - Hutang: rinci per supplier
+2. Sistem hitung selisih D − K
+3. Selisih otomatis ditempatkan ke akun Modal (3.1.03 atau 3.1.05)
+4. Buat satu Jurnal Saldo Awal bertanggal 1 hari sebelum tahun buku dimulai
+5. Posting → kunci permanen
+[KOREKSI] Konsep Anda menulis "copas ke bulan N+1 sampai tahun ke N+1" untuk jurnal dan buku besar. Jangan menyalin jurnal. Jurnal saldo awal cukup satu kali. Saldo awal bulan berikutnya adalah hasil hitung dari buku besar bulan sebelumnya, bukan hasil copy-paste baris jurnal. Menyalin jurnal akan menggandakan transaksi di laporan tahunan.
+M8.5 Jurnal Penyesuaian
+M8.5.1 Penyusutan Aset Tetap
+Butuh master aset_tetap: nama, tanggal perolehan, nilai perolehan, nilai residu, umur ekonomis, metode (garis lurus), akun biaya, akun akumulasi.
+Job bulanan menghasilkan:
+Biaya Penyusutan [kategori] (D)
+  Akumulasi Penyusutan [kategori] (K)
+Tanah tidak disusutkan. Aset yang sudah habis disusutkan berhenti otomatis.
+M8.5.2 Selisih Stok Opname
+Fisik < Sistem : Biaya Kerusakan & Susut (D) / Persediaan (K)
+Fisik > Sistem : Persediaan (D) / Pendapatan Lain-lain (K)
+M8.5.3 Rekonsiliasi PPN (hanya jika PKP)
+Jika PPN Keluaran > PPN Masukan:
+  PPN Keluaran (D)
+    PPN Masukan (K)
+    Hutang PPN Kurang Bayar (K)
+
+Jika PPN Masukan > PPN Keluaran:
+  PPN Keluaran (D)
+  Piutang PPN Lebih Bayar (D)
+    PPN Masukan (K)
+M8.5.4 Biaya Akrual
+Biaya yang sudah terjadi tapi belum dibayar (listrik bulan berjalan, gaji terutang): Biaya (D) / Hutang Biaya (K).
+M8.6 Jurnal Koreksi (Pembalik)
+Logika yang Anda tulis sudah tepat. Formalisasi:
+CREATE PROCEDURE sp_reverse_jurnal(p_jurnal_id, p_tanggal_balik, p_user)
+-- 1. Validasi: jurnal ada, status = POSTED, belum pernah dibalik
+-- 2. Validasi: periode p_tanggal_balik masih Open
+-- 3. Insert jurnal_header baru:
+--      keterangan = 'Koreksi atas Jurnal ' || no_jurnal_asal
+--      is_koreksi = TRUE, reverse_of_id = p_jurnal_id
+-- 4. Copy jurnal_detail dengan debet <-> kredit ditukar
+-- 5. Update jurnal asal: status = 'REVERSED'
+-- 6. Jika jurnal asal berdampak stok, panggil sp_reverse_kartu_stok
+Poin ke-6 sering terlupakan: membalik jurnal tanpa membalik kartu stok membuat nilai persediaan di Neraca berbeda dengan nilai di Gudang.
+M8.7 Buku Besar [KOREKSI]
+Jangan menyimpan buku besar sebagai tabel transaksional yang diisi manual. Jadikan tabel ringkasan (summary) yang dihasilkan ulang oleh proses tutup bulan:
+buku_besar_periode
+  periode_tahun, periode_bulan, coa_id   -- composite PK
+  saldo_awal_debet, saldo_awal_kredit
+  mutasi_debet, mutasi_kredit
+  saldo_akhir_debet, saldo_akhir_kredit
+Rumus saldo akhir:
+Akun posisi normal D (Aktiva, HPP, Biaya):
+  saldo_akhir = saldo_awal + mutasi_D − mutasi_K
+
+Akun posisi normal K (Kewajiban, Modal, Pendapatan):
+  saldo_akhir = saldo_awal + mutasi_K − mutasi_D
+Kalau buku besar bisa dibangun ulang dari jurnal kapan saja, satu jurnal backdate tidak akan merusak data Anda secara permanen.
+M8.8 Tutup Bulan
+1. Validasi: tidak ada dokumen berstatus DRAFT di semua modul
+2. Validasi: semua jurnal periode ini POSTED
+3. Validasi: Total Debet = Total Kredit
+4. Validasi: nilai persediaan di Buku Besar = nilai di tabel stok
+5. Validasi: total piutang di Buku Besar = total buku pembantu piutang
+6. Validasi: total hutang di Buku Besar = total buku pembantu hutang
+7. Generate buku_besar_periode
+8. Set periode status = Closed
+9. Buat saldo awal periode N+1
+Validasi 4–6 adalah pengaman terpenting Anda. Kalau salah satu gagal, ada modul yang menulis stok atau piutang tanpa menjurnal.
+M8.9 Tutup Tahun
+1. Semua bulan sudah Closed
+2. Jurnal Penutup:
+   - Pendapatan (D) semua saldo → Ikhtisar Laba Rugi (K)
+   - Ikhtisar Laba Rugi (D) → HPP & Biaya (K) semua saldo
+   - Ikhtisar Laba Rugi → SHU Tahun Berjalan
+3. Pembagian SHU sesuai AD/ART, contoh:
+   - Cadangan Umum        %
+   - Jasa Anggota (berdasar transaksi & simpanan)  %
+   - Dana Pengurus        %
+   - Dana Pendidikan      %
+   - Dana Sosial          %
+   Jurnal: SHU Tahun Berjalan (D) / masing-masing akun (K)
+4. Akun 4,5,6,7 bersaldo nol
+5. Akun 1,2,3 dibawa ke tahun berikutnya
+6. Set tahun status = Locked
+Perhatikan langkah 3: ini yang membedakan koperasi dari PT. SHU tidak semuanya menjadi laba ditahan. Sistem harus menghitung jasa anggota berdasarkan nilai transaksi tiap anggota sepanjang tahun — itulah sebabnya is_anggota dan pemisahan akun pendapatan anggota/non-anggota harus ada sejak awal.
+________________________________________
+M9. PELAPORAN
+Laporan	Sumber	Filter Akun
+Neraca Saldo	buku_besar_periode	Semua akun transaksional
+Laba Rugi (Perhitungan Hasil Usaha)	buku_besar_periode	4, 5, 6, 7
+Neraca (Posisi Keuangan)	buku_besar_periode + SHU	1, 2, 3
+Arus Kas	jurnal_detail akun Kas & Bank	1.1.01, 1.1.02
+Perubahan Ekuitas	akun 3	3.x
+Kartu Stok	kartu_stok	—
+Nilai Persediaan	tabel stok	—
+Aging Piutang	buku pembantu piutang	—
+Aging Hutang	buku pembantu hutang	—
+Neraca Komoditas Desa	M3.1	—
+Rencana vs Realisasi Pengadaan	M2 vs M5	—
+Laporan SHU per Anggota	M8.9	—
+________________________________________
+10. Prinsip Teknis Lintas Modul
+10.1 State Machine Dokumen
+Semua dokumen transaksional mengikuti pola yang sama:
+DRAFT → SUBMITTED → APPROVED → POSTED → (REVERSED)
+                  ↘ REJECTED    ↘ CANCELLED
+Hanya dokumen POSTED yang menghasilkan jurnal dan mutasi stok.
+10.2 Atomicity
+Satu transaksi bisnis = satu transaksi database. Kalau jurnal gagal, mutasi stok harus ikut rollback. Jangan pernah commit stok lebih dulu lalu menjurnal di job terpisah.
+10.3 Tipe Data Uang
+Gunakan DECIMAL(18,2), jangan pernah FLOAT atau DOUBLE. Untuk kuantitas komoditas gunakan DECIMAL(18,4) (beras 12,5 kg, ikan 0,75 kg).
+10.4 Audit Trail
+Setiap tabel transaksional: created_by, created_at, updated_by, updated_at. Tambah tabel audit_log untuk perubahan pada master data dan pembatalan dokumen.
+10.5 Idempotensi
+Setiap dokumen sumber hanya boleh menghasilkan satu jurnal. Terapkan unique constraint pada (ref_tipe, ref_id) di jurnal_header untuk jurnal otomatis.
+________________________________________
+11. Urutan Pembangunan yang Disarankan
+Fase	Isi	Alasan urutan
+1	M0 Master + Auth	Semua modul bergantung padanya
+2	M8.1–M8.3 COA + struktur jurnal + posting engine	Bangun mesin jurnal sebelum ada transaksi, bukan sesudah
+3	M4 Gudang + kartu stok	Sumber semua angka HPP
+4	M5 Pembelian + M6 Penjualan	Transaksi yang menghasilkan uang
+5	M7 Piutang/Hutang/Kas	Menutup siklus kas
+6	M8.4–M8.9 Saldo awal, penyesuaian, tutup buku	Butuh data transaksi nyata untuk diuji
+7	M9 Pelaporan	
+8	M1 Survey + M2 Kalkulasi + M3 Perencanaan	Modul perencanaan; koperasi tetap bisa beroperasi tanpanya
+Urutan ini mungkin berlawanan dengan intuisi Anda, karena konsep Anda dimulai dari Survey. Alasannya: Survey dan Kalkulasi tidak menghasilkan uang dan tidak memblokir operasi koperasi. Gudang dan Akuntansi memblokir segalanya. Kalau Anda membangun Survey dulu dan kehabisan waktu atau anggaran, Anda punya aplikasi survei yang cantik dan koperasi yang tidak bisa berjualan.
+________________________________________
+12. Keputusan yang Harus Anda Ambil Sebelum Coding
+Sepuluh pertanyaan berikut mengubah struktur database. Menjawabnya belakangan berarti migrasi:
+1.	Metode penilaian persediaan: Moving Average atau FIFO?
+2.	Apakah koperasi berstatus PKP? (menentukan seluruh modul PPN ada atau tidak)
+3.	Berapa jumlah gudang? Satu pusat, atau satu per desa?
+4.	Apakah "desa" adalah pelanggan (entitas terpisah) atau cabang koperasi (entitas sama)? — menentukan distribusi antar desa dijurnal sebagai penjualan atau transfer
+5.	Apakah warga pembeli wajib berstatus anggota? Bagaimana yang bukan anggota?
+6.	Alur pembelian dua langkah (GRN → Hutang Dagang) atau tiga langkah (GRN → Hutang Belum Difakturkan → Faktur)?
+7.	Apakah penjualan kredit diizinkan ke warga perorangan, atau hanya ke desa?
+8.	Tahun buku: Januari–Desember?
+9.	Rumus pembagian SHU sesuai AD/ART koperasi Anda — persentase tiap pos?
+10.	Apakah sistem harus jalan offline di lapangan (survei, kasir desa tanpa internet)? — menentukan apakah butuh arsitektur sinkronisasi, dan ini adalah keputusan yang paling mahal untuk diubah belakangan
+Jawaban nomor 2, 4, dan 10 adalah yang paling berisiko. Saya sarankan Anda tetapkan tiga itu lebih dulu sebelum yang lain.

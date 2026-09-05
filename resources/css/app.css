@@ -1,0 +1,51 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+/*
+ * Token desain KDMP.
+ *
+ * Konsepnya: buku besar koperasi desa, bukan dashboard SaaS generik.
+ * "ink"   -> sampul buku besar / tinta, dipakai untuk sidebar gelap.
+ * "paper" -> kertas ledger, latar konten utama.
+ * "merah" -> aksen utama (Merah Putih), dipakai HEMAT: status, tombol utama.
+ * "sawah" -> hijau sawah, dipakai untuk status positif/lunas/surplus.
+ * "padi"  -> emas gabah, dipakai untuk status pending/menunggu.
+ */
+@theme {
+    --font-display: 'Fraunces', ui-serif, Georgia, serif;
+    --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+
+    --color-ink-950: #14170f;
+    --color-ink-900: #1c211a;
+    --color-ink-800: #262d22;
+    --color-ink-700: #333c2d;
+    --color-ink-600: #454f3d;
+
+    --color-paper-50: #fbfaf7;
+    --color-paper-100: #f5f4ee;
+    --color-paper-200: #ebe8de;
+    --color-paper-300: #ddd9cb;
+
+    --color-merah-50: #fbebe8;
+    --color-merah-100: #f4cec7;
+    --color-merah-400: #c1483a;
+    --color-merah-500: #a8321f;
+    --color-merah-600: #8c281a;
+    --color-merah-700: #6f1f14;
+
+    --color-sawah-100: #e3ead9;
+    --color-sawah-500: #4f7351;
+    --color-sawah-600: #3d5c3f;
+
+    --color-padi-100: #f3e6c3;
+    --color-padi-500: #b98a2c;
+    --color-padi-600: #93701f;
+
+    --color-ink: var(--color-ink-900);
+    --color-paper: var(--color-paper-100);
+}

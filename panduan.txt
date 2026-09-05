@@ -1,0 +1,69 @@
+6. Panduan Per Modul
+6.1 M1 — Survei
+Langkah membuat dan menyelesaikan satu sesi survei:
+17.	Buka menu Sesi Survei, klik "+ Sesi Baru".
+18.	Pilih wilayah, tahun, bulan, dan tanggal survei, lalu klik "Buat Sesi".
+19.	Sistem menampilkan tautan unik (token) di halaman detail sesi — salin dan bagikan tautan ini ke petugas lapangan (lewat WhatsApp/SMS), tidak perlu login untuk mengisi.
+20.	Petugas lapangan membuka tautan tersebut dan mengisi setiap pertanyaan: ketik manual, atau pakai tombol 🎤 untuk isi dengan suara dan 🔊 untuk mendengarkan pertanyaannya.
+21.	Setelah semua diisi, klik "Kirim Survei". Status sesi berubah menjadi "terkirim".
+22.	Admin desa membuka kembali menu Sesi Survei, memeriksa jawaban, lalu klik "Setujui".
+Catatan: data BARU muncul di menu Demografi Desa, Potensi Produksi, dan Perbandingan Harga SETELAH sesi diklik "Setujui" — mengisi dan mengirim survei saja belum cukup.
+Catatan teknis: fitur suara memakai kemampuan bawaan browser (bukan layanan berbayar), jadi hanya jalan optimal di Google Chrome/Android, dan situs harus diakses lewat HTTPS (atau localhost saat pengujian). Kalau browser tidak mendukung, tombol suara otomatis hilang dan tetap bisa diisi manual.
+6.2 M2 — Kalkulasi Kebutuhan
+Menu Kebutuhan Komoditas menampilkan hasil hitung otomatis: jumlah penduduk (dari survei Demografi yang sudah disetujui) dikalikan standar kebutuhan per kapita, dikalikan jumlah hari dalam bulan, dikalikan faktor musiman.
+23.	Buka menu Kebutuhan Komoditas.
+24.	Isi Tahun, Bulan, dan Faktor Musiman (biarkan 1 bila tidak ada penyesuaian musiman), lalu klik "Hitung Kebutuhan".
+25.	Hasil per komoditas dan kelompok umur akan tampil di tabel bawah.
+Catatan: perhitungan ini bersifat "snapshot" — tersimpan permanen untuk bulan tersebut. Kalau standar kebutuhan direvisi di kemudian hari, angka bulan-bulan yang sudah dihitung sebelumnya TIDAK berubah.
+6.3 M3 — Perencanaan (Neraca Komoditas & Permintaan Pengadaan)
+Neraca Komoditas membandingkan produksi desa (dari survei Potensi Produksi) dengan kebutuhan (M2):
+26.	Buka menu Neraca Komoditas, isi Tahun dan Bulan yang sama dengan langkah Kalkulasi Kebutuhan, klik "Hitung Neraca".
+27.	Tabel menampilkan status Surplus/Defisit/Seimbang beserta persentase kecukupan untuk setiap komoditas.
+Bila hasilnya defisit, lanjutkan ke Permintaan Pengadaan:
+28.	Buka menu Permintaan Pengadaan, klik "+ Buat Otomatis dari Neraca".
+29.	Isi Tahun, Bulan, dan Safety Stock (stok pengaman tambahan, boleh 0), klik "Buat Draft".
+30.	Sistem otomatis menghitung: Kebutuhan − Stok Gudang Saat Ini + Safety Stock, dan membuat draft permintaan multi-barang.
+31.	Periksa draft, klik "Ajukan", lalu (sebagai pihak yang berwenang) klik "Setujui".
+Catatan: setelah disetujui, pembelian sesungguhnya masih dilakukan secara manual lewat menu M5 Pembelian — belum otomatis menjadi transaksi pembelian.
+6.4 M4 — Gudang
+•	Penerimaan Barang (GRN) — gunakan menu Penerimaan Barang untuk mencatat barang masuk sekaligus memilah mana yang layak dan tidak layak.
+•	Stock Opname — gunakan menu Stock Opname untuk mencocokkan stok fisik dengan sistem secara berkala; selisih otomatis dijurnal ke akun yang sesuai.
+•	Kerusakan Barang — gunakan menu Kerusakan Barang untuk mencatat barang rusak/hilang di luar jadwal opname.
+•	Kartu Stok — gunakan menu Kartu Stok untuk melihat riwayat lengkap mutasi satu barang, urut waktu.
+6.5 M5 — Pembelian
+32.	Buka menu Pembelian (atau Pembelian dari Petani untuk transaksi cepat tanpa dokumen permintaan).
+33.	Isi pemasok/petani, tanggal, dan daftar barang beserta jumlah dan harga.
+34.	Pilih jenis pembayaran: tunai, transfer, atau kredit.
+35.	Simpan dan posting — stok bertambah dan jurnal otomatis terbentuk (untuk kredit, otomatis tercatat sebagai Hutang di menu M9).
+6.6 M6 — Penjualan (Kasir/POS)
+36.	Buka menu Kasir (POS).
+37.	Pilih barang dan jumlah yang dibeli warga (baris barang titipan konsinyasi otomatis ditandai terpisah bila ada).
+38.	Pilih jenis pembayaran tunai/transfer, lalu simpan transaksi.
+39.	Stok berkurang dan jurnal penjualan otomatis terbentuk sesuai HPP rata-rata berjalan saat itu.
+6.7 M7 — Konsinyasi Antar Desa
+Dipakai saat satu desa menitipkan barang untuk dijual di desa lain. Barang titipan tetap tercatat sebagai milik desa pengirim sampai benar-benar terjual.
+40.	(Opsional) cocokkan kebutuhan lewat Marketplace Permintaan/Penawaran.
+41.	Buat Pengiriman Konsinyasi dari desa pemilik ke desa penerima.
+42.	Desa penerima menjual barang titipan lewat Kasir (POS) yang sama, ditandai baris "Titipan".
+43.	Desa penerima melakukan Setoran hasil penjualan ke desa pemilik lewat menu Setoran & Retur Sisa.
+44.	Cek menu Rekonsiliasi Konsinyasi secara berkala — Piutang Konsinyasi milik desa pemilik harus selalu sama persis dengan Hutang Konsinyasi desa penerima.
+6.8 M9 — Piutang, Hutang & Kas
+•	Piutang & Hutang — lihat daftar dan umur piutang/hutang per pihak, lalu proses lewat menu Pelunasan (bisa dibayar penuh atau sebagian).
+•	Kas Masuk/Keluar — catat pemasukan/pengeluaran kas yang bukan dari transaksi pembelian/penjualan (misalnya biaya operasional, setoran modal).
+•	Simpanan Anggota — catat setoran dan penarikan simpanan pokok, wajib, dan sukarela anggota (simpanan pokok tidak bisa ditarik).
+6.9 M8 — Akuntansi
+•	Jurnal — lihat semua jurnal yang terbentuk otomatis dari transaksi; setiap jurnal punya pasangan debet=kredit.
+•	Aset Tetap — catat aset tetap desa (tanah, gedung, kendaraan, peralatan); penyusutan bulanan berjalan otomatis.
+•	Tutup Bulan — jalankan di akhir bulan; sistem memvalidasi delapan syarat (tidak ada dokumen draft, jurnal balance, kecocokan stok/piutang/hutang/konsinyasi, dll.) sebelum bulan bisa ditutup.
+•	Tutup Tahun — jalankan di akhir tahun buku setelah bulan 12 ditutup; menghasilkan jurnal penutup dan membagi SHU sesuai Konfigurasi SHU (harus 100% dulu).
+6.10 M10 — Pelaporan
+Empat laporan utama — Neraca, Laba Rugi, Neraca Saldo, dan Arus Kas — semuanya dihitung otomatis dari jurnal yang sudah terbentuk. Pilih periode yang diinginkan di setiap halaman laporan; tidak ada input data manual di modul ini.
+ 
+7. Catatan dan Keterbatasan Penting
+•	Isi survei baru berpengaruh ke Demografi Desa/Potensi Produksi/Perbandingan Harga setelah sesi disetujui admin, bukan langsung setelah dikirim.
+•	Fitur suara di form survei memakai kemampuan browser (Web Speech API), bukan layanan cloud berbayar. Paling stabil di Google Chrome/Android, dan wajib diakses lewat HTTPS (produksi) atau localhost (pengujian).
+•	HPP dihitung dengan metode rata-rata bergerak (moving average), bukan FIFO/LIFO.
+•	Dokumen yang sudah berstatus "diposting" tidak bisa diedit langsung. Koreksi dilakukan lewat transaksi pembalik/retur, bukan mengubah data lama.
+•	Penutupan bulan harus berurutan — tidak bisa melompati bulan yang belum ditutup.
+•	Permintaan Pengadaan yang sudah disetujui belum otomatis menjadi transaksi Pembelian — pencatatan pembelian sesungguhnya masih manual lewat menu M5.
+•	Data antar desa terisolasi otomatis; satu-satunya data yang sengaja dibagikan antar desa adalah harga hasil survei di menu Perbandingan Harga.
