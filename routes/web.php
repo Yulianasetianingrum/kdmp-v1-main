@@ -49,6 +49,9 @@ use App\Http\Controllers\Survei\SesiSurveiController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', LandingController::class)->name('landing');
+Route::get('/about', function () {
+    return view('about');
+})->name('about');
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'create'])->name('login');
