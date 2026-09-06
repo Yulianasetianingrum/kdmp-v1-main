@@ -50,7 +50,15 @@ class PublicSurveiController extends Controller
             
             // Asumsi sederhana: cek tipe_jawaban
             if ($pertanyaan->tipe_jawaban === 'ANGKA' || $pertanyaan->tipe_jawaban === 'angka') {
-                $jawaban->nilai_angka = (float) $nilai;
+                // Bersihkan format angka Indonesia (hapus titik pemisah ribuan, ganti koma jadi titik desimal)
+                $cleanNilai = preg_replace('/[^0-9.,-]/', '', (string) $nilai);
+                
+                // Jika mengandung koma (sebagai desimal) dan titik (sebagai ribuan)
+                // Contoh: 25.000,50 -> 25000.50
+                $cleanNilai = str_replace('.', '', $cleanNilai);
+                $cleanNilai = str_replace(',', '.', $cleanNilai);
+                
+                $jawaban->nilai_angka = (float) $cleanNilai;
             } else {
                 $jawaban->nilai_teks = (string) $nilai;
             }
@@ -58,8 +66,8 @@ class PublicSurveiController extends Controller
             $jawaban->save();
         }
 
-        // Ubah status ke TERISI atau biarkan DRAFT (Tergantung workflow, kita biarkan dulu atau set ke TERISI jika ada)
-        // $sesi->update(['status' => 'TERISI']);
+        // Ubah status ke TERKIRIM
+        $sesi->update(['status' => 'terkirim']);
 
         return redirect()->route('survei.public.show', $token)
             ->with('success', 'Terima kasih, data survei berhasil dikirim.');
